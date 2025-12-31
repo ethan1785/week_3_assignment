@@ -29,7 +29,31 @@ The frontend communicates with the backend via HTTP API calls.
 ## Prerequisites
 
 -   Python 3.8+
--   `pip` (Python package installer)
+-   Node.js 18+ and npm
+-   Git
+-   GitHub account
+
+## 🚀 Getting Started
+
+### Step 0: Fork This Repository
+
+**IMPORTANT**: You must fork this repository to your own GitHub account to work on the assignment.
+
+1. **Click the "Fork" button** at the top right of this repository
+2. **Select your GitHub account** as the destination
+3. **Clone your forked repository**:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/siggraph-rag.git
+   cd siggraph-rag
+   ```
+
+You will be working in **your fork**, not the original repository. This allows you to:
+- ✅ Push your code changes
+- ✅ Track your progress with commits
+- ✅ Deploy your own version
+- ✅ Submit your work via your repository link
+
+---
 
 ## 1. Setup Instructions
 
@@ -38,7 +62,7 @@ Follow these steps to set up your local environment.
 ### a. Navigate to the Backend Directory
 
 ```bash
-cd /path/to/your/project/week3_assignment/backend
+cd backend
 ```
 
 ### b. Create and Activate a Virtual Environment (Recommended)
