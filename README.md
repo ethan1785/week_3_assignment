@@ -111,7 +111,7 @@ QDRANT_URL="https://your-cluster.qdrant.io"
 QDRANT_API_KEY="your-qdrant-api-key"
 
 # Model Configuration
-EMBEDDING_MODEL="text-embedding-3-large"
+EMBEDDING_MODEL="baai/bge-large-en-v1.5"
 LLM_MODEL="gpt-4-turbo-preview"
 
 # Reranker Configuration (choose one)
@@ -214,33 +214,33 @@ Starter files are already created in `backend/` with TODO comments. Open each fi
 
 | File | Purpose |
 |------|---------|
-| `upload_to_qdrant.py` | One-time script to embed chunks and upload to Qdrant Cloud |
+| `upload_from_npz.py` | Script to upload embeddings from .npz file to Qdrant cloud |
 | `retrieval_pipeline.py` | Hybrid search (semantic + BM25 + reranking) |
 | `rag_generate.py` | Generate answers using LLM |
 
 ---
 
-## STEP 1: Upload Embeddings to Qdrant Cloud
+## STEP 1: Upload Pre-computed Embeddings to Qdrant Cloud
 
-**File: `backend/upload_to_qdrant.py`**
+We provide pre-computed embeddings using **BAAI/bge-large-en-v1.5** model (1024 dimensions) to avoid rate limiting issues and speed up the process.
 
-Implement these functions (see TODO comments in file):
+**File: `backend/upload_from_npz.py`**
 
-| Function | What it does |
-|----------|--------------|
-| `load_chunks()` | Load and parse `chunks.json` |
-| `get_embeddings_batch()` | Call OpenRouter API to get embeddings for multiple texts |
-| `create_qdrant_collection()` | Create a Qdrant collection with cosine distance |
-| `upload_chunks_to_qdrant()` | Loop through chunks, embed them, upload to Qdrant |
-| `main()` | Orchestrate the upload process |
+This script is **already implemented** - it loads pre-computed embeddings from `embeddings_BAAI_bge_large_en_v1.5.npz` and uploads them to Qdrant Cloud.
 
-**After implementing, run once:**
+**Run once to upload:**
 ```bash
 cd backend
-python upload_to_qdrant.py
+python upload_from_npz.py --recreate
 ```
 
-This takes ~10-30 minutes. Cost: ~$0.50-1.00 for embeddings.
+This takes ~2 minutes (no API calls for embeddings). The `--recreate` flag deletes any existing collection and starts fresh.
+
+**What it does:**
+- Loads 11,008 chunks from `chunks.json`
+- Loads pre-computed embeddings from `.npz` file
+- Creates Qdrant collection with 1024-dimensional vectors
+- Uploads all chunks with embeddings in batches
 
 ---
 
@@ -252,8 +252,8 @@ Implement these classes/functions:
 
 | Class/Function | What it does |
 |----------------|--------------|
-| `OpenRouterEmbedder.__init__()` | Store API key, model, base URL |
-| `OpenRouterEmbedder.embed_query()` | Get embedding for a query via OpenRouter API |
+| `OpenRouterEmbedder.__init__()` | Store API key, model (`baai/bge-large-en-v1.5`), base URL |
+| `OpenRouterEmbedder.embed_query()` | Get embedding for a query via OpenRouter API (must match upload model) |
 | `BM25Index.__init__()` | Tokenize chunks and build BM25 index |
 | `BM25Index._tokenize()` | Convert text to lowercase word tokens |
 | `BM25Index.search()` | Return top-k BM25 matches |
@@ -495,7 +495,7 @@ In the Render dashboard, add these environment variables:
 OPENROUTER_API_KEY=sk-or-v1-...
 QDRANT_URL=https://your-cluster.qdrant.io
 QDRANT_API_KEY=your-qdrant-key
-EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_MODEL=baai/bge-large-en-v1.5
 LLM_MODEL=gpt-4-turbo-preview
 RERANKER_TYPE=cohere
 COHERE_API_KEY=your-cohere-key
@@ -637,7 +637,7 @@ Your frontend will be live at: `https://siggraph-rag.vercel.app`
 1. **Use cheaper models for development**:
    ```
    LLM_MODEL=gpt-3.5-turbo  # ~$0.001/1K tokens vs $0.01/1K for GPT-4
-   EMBEDDING_MODEL=text-embedding-3-small  # Cheaper than large
+   # Note: Keep EMBEDDING_MODEL=baai/bge-large-en-v1.5 to match uploaded embeddings
    ```
 
 2. **Reduce retrieval size**:
