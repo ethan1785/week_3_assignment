@@ -110,7 +110,12 @@ class RAGGenerator:
             config: Optional configuration object
             retrieval_pipeline: Optional pre-initialized retrieval pipeline
         """
-        pass
+        self.config = config or GenerationConfig()
+        self.retrieval = retrieval_pipeline or RetrievalPipeline()
+        self.openrouter_api_key = self.config.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+        if not self.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY not set")
+        self.openrouter_base_url = "https://openrouter.ai/api/v1"
     
     def refine_query(self, query: str) -> str:
         """
@@ -147,7 +152,36 @@ class RAGGenerator:
         Returns:
             Refined query (or original if refinement disabled/fails)
         """
-        pass
+        if not self.config.refine_query:
+            return query
+
+        prompt = QUERY_REFINEMENT_PROMPT.format(query=query)
+        headers = {
+            "Authorization": f"Bearer {self.openrouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.config.refinement_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 100,
+        }
+
+        try:
+            response = requests.post(
+                f"{self.openrouter_base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+            if response.status_code != 200:
+                return query
+            response_json = response.json()
+            refined = response_json["choices"][0]["message"]["content"].strip()
+            refined = refined.strip().strip('"').strip("'")
+            return refined or query
+        except Exception:
+            return query
     
     def _format_context(self, results: list[RetrievalResult]) -> str:
         """
@@ -177,7 +211,19 @@ class RAGGenerator:
         Returns:
             Formatted context string
         """
-        pass
+        sources: list[str] = []
+        for i, result in enumerate(results, 1):
+            formatted = f'''
+            --- Source {i} ---
+            Title: {result.title}
+            Authors: {result.authors}
+            Section: {result.chunk_section}
+            
+            Content:
+            {result.text}
+            '''
+            sources.append(formatted)
+        return "\n".join(sources)
     
     def _build_sources_metadata(self, results: list[RetrievalResult]) -> list[dict]:
         """
@@ -209,7 +255,19 @@ class RAGGenerator:
         Returns:
             List of unique source metadata dicts
         """
-        pass
+        seen: dict[str, dict] = {}
+        for result in results:
+            if result.title not in seen:
+                seen[result.title] = {
+                    "title": result.title,
+                    "authors": result.authors,
+                    "pdf_url": result.pdf_url,
+                    "github_link": result.github_link,
+                    "video_link": result.video_link,
+                    "acm_url": result.acm_url,
+                    "abstract_url": result.abstract_url,
+                }
+        return list(seen.values())
     
     def _call_llm(self, query: str, context: str) -> str:
         """
@@ -256,7 +314,42 @@ class RAGGenerator:
         Returns:
             Generated answer string
         """
-        pass
+        user_message = f'''Based on the following research paper excerpts, answer this question.
+
+        Question: {query}
+
+        Research Paper Excerpts:
+        {context}
+
+        Remember to cite papers using [Paper Title] format.'''
+
+        headers = {
+            "Authorization": f"Bearer {self.openrouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.config.llm_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
+        }
+
+        response = requests.post(
+            f"{self.openrouter_base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=120,
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"OpenRouter LLM error {response.status_code}: {response.text[:500]}")
+
+        response_json = response.json()
+        answer = response_json["choices"][0]["message"]["content"]
+        return answer
     
     def generate(self, query: str, top_k: Optional[int] = None, return_sources: bool = True) -> dict:
         """
@@ -297,7 +390,28 @@ class RAGGenerator:
         Returns:
             Dict with query, refined_query, answer, and sources
         """
-        pass
+        refined = self.refine_query(query)
+
+        k = top_k if top_k is not None else self.config.retrieval_top_k
+        results = self.retrieval.retrieve(refined, top_k=k)
+
+        if not results:
+            return {
+                "query": query,
+                "refined_query": refined,
+                "answer": "I couldn't find any relevant papers to answer this question.",
+                "sources": [],
+            }
+
+        context = self._format_context(results)
+        answer = self._call_llm(query, context)
+
+        return {
+            "query": query,
+            "refined_query": refined,
+            "answer": answer,
+            "sources": self._build_sources_metadata(results) if return_sources else [],
+        }
 
 
 # =============================================================================
