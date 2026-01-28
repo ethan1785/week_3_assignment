@@ -295,7 +295,7 @@ class RetrievalPipeline:
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
                 openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
                 cohere_api_key=os.getenv("COHERE_API_KEY"),
-                chunks_path=os.getenv("CHUNKS_PATH", "./chunks.json"),
+                chunks_path=(os.getenv("CHUNKS_PATH") or "./chunks.json"),
             )
 
         if not config.qdrant_url:
@@ -350,7 +350,11 @@ class RetrievalPipeline:
         Returns:
             List of result dicts with chunk_id, score, and payload
         """
-        query_embedding = self.embedder.embed_query(query)
+        try:
+            query_embedding = self.embedder.embed_query(query)
+        except Exception as e:
+            print(f"⚠️  Semantic search disabled (embedding failed): {e}")
+            return []
 
         results = self.qdrant.query_points(
             collection_name=COLLECTION_NAME,
