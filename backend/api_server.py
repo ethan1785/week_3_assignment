@@ -33,7 +33,7 @@ try:
 except ImportError:
     pass
 
-from test_backend_integration import RAGGenerator, GenerationConfig, SYSTEM_PROMPT
+from rag_generate import RAGGenerator, GenerationConfig, SYSTEM_PROMPT
 
 
 # Global instances
@@ -54,10 +54,8 @@ async def lifespan(app: FastAPI):
     print("="*60)
     
     config = GenerationConfig(
-        llm_provider="openai",
         retrieval_top_k=8,
-        refine_query=True,
-        use_reranker=True
+        refine_query=True
     )
     
     rag_generator = RAGGenerator(config)
@@ -251,7 +249,7 @@ IMPORTANT: You have been provided with {len(results)} paper excerpts. Make sure 
         }
         
         payload = {
-            "model": f"openai/{rag_generator.config.llm_model}",
+            "model": rag_generator.config.llm_model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_message}
@@ -267,6 +265,17 @@ IMPORTANT: You have been provided with {len(results)} paper excerpts. Make sure 
             json=payload,
             stream=True
         )
+
+        if response.status_code != 200:
+            body_preview = response.text[:1000] if response.text else ""
+            yield emit(
+                "error",
+                {
+                    "message": f"OpenRouter error {response.status_code}: {body_preview}",
+                    "stage": "generating",
+                },
+            )
+            return
         
         answer_chunks = []
         for line in response.iter_lines():
@@ -286,12 +295,22 @@ IMPORTANT: You have been provided with {len(results)} paper excerpts. Make sure 
                         continue
         
         answer = "".join(answer_chunks)
+
+        if not answer.strip():
+            yield emit(
+                "error",
+                {
+                    "message": "No answer text was streamed from the model. This can happen if the model request failed upstream (e.g., insufficient credits) or returned an empty completion.",
+                    "stage": "generating",
+                },
+            )
+            return
         
         # Stage 4: Complete
         processing_time = time.time() - start_time
         yield emit("complete", {
             "answer": answer,
-            "sources": list(sources_metadata.values()),
+            "sources": sources_metadata,
             "refined_query": refined if refined != query else None,
             "processing_time": processing_time
         })
